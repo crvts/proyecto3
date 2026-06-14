@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema de Inventario — NoSQL</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    /* ── TOKENS ─────────────────────────────────────── */
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3e;
+      --accent:    #4f8ef7;
+      --accent-h:  #3a7ae8;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --yellow:    #f59e0b;
+      --text:      #e8eaf0;
+      --muted:     #6b7280;
+      --radius:    10px;
+    }
+
+    /* ── RESET ──────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px 16px 60px;
+    }
+
+    /* ── LAYOUT ─────────────────────────────────────── */
+    .wrapper { max-width: 760px; margin: 0 auto; }
+
+    /* ── HEADER ─────────────────────────────────────── */
+    header { text-align: center; margin-bottom: 36px; padding-top: 12px; }
+    header .badge {
+      display: inline-block;
+      background: rgba(79,142,247,.15);
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .72rem;
+      letter-spacing: .08em;
+      padding: 4px 12px;
+      border-radius: 99px;
+      border: 1px solid rgba(79,142,247,.3);
+      margin-bottom: 14px;
+    }
+    header h1 {
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: -.02em;
+      line-height: 1.2;
+    }
+    header h1 span { color: var(--accent); }
+    header p { color: var(--muted); font-size: .9rem; margin-top: 8px; }
+
+    /* ── STATUS DOT ─────────────────────────────────── */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 28px;
+      font-size: .82rem;
+      color: var(--muted);
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--yellow);
+      animation: pulse 2s infinite;
+    }
+    .dot.connected { background: var(--green); animation: none; }
+    .dot.error     { background: var(--red);   animation: none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── CARD ───────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: .75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+
+    /* ── FORM ───────────────────────────────────────── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    @media(max-width:540px){ .form-grid { grid-template-columns: 1fr; } }
+
+    label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: 6px; }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: .9rem;
+      padding: 10px 14px;
+      transition: border-color .2s;
+      outline: none;
+    }
+    input:focus { border-color: var(--accent); }
+    input::placeholder { color: #3d4155; }
+
+    /* ── BUTTONS ────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Inter', sans-serif;
+      font-size: .875rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      padding: 10px 20px;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: var(--accent); color: #fff; width: 100%; justify-content: center; }
+    .btn-primary:hover { background: var(--accent-h); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    /* ── MODE TOGGLE ────────────────────────────────── */
+    .mode-hint {
+      font-size: .78rem;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 8px;
+      min-height: 18px;
+    }
+    .mode-hint a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+    /* ── TABLE ──────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    thead th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,.03); }
+    tbody td { padding: 12px 14px; vertical-align: middle; }
+
+    .tag-stock {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 99px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .tag-stock.ok  { background: rgba(34,197,94,.15);  color: var(--green); }
+    .tag-stock.low { background: rgba(245,158,11,.15); color: var(--yellow); }
+
+    .actions { display: flex; gap: 6px; }
+    .btn-icon {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: .85rem;
+      padding: 5px 9px;
+      transition: color .15s, border-color .15s;
+    }
+    .btn-icon:hover { color: var(--text); border-color: var(--text); }
+    .btn-icon.del:hover { color: var(--red); border-color: var(--red); }
+    .btn-icon.edit:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* ── EMPTY / LOADING ────────────────────────────── */
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: .875rem;
+    }
+    .spinner {
+      display: inline-block;
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── TOAST ──────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 18px;
+      font-size: .875rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,.4);
+      transform: translateY(20px);
+      opacity: 0;
+      transition: all .3s;
+      pointer-events: none;
+      max-width: 280px;
+      z-index: 999;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.ok   { border-color: var(--green); color: var(--green); }
+    #toast.err  { border-color: var(--red);   color: var(--red);   }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- HEADER -->
+  <header>
+    <div class="badge">MongoDB Atlas · Node.js · Express</div>
+    <h1>Sistema de <span>Inventario</span> NoSQL</h1>
+    <p>CRUD completo conectado a la nube — Técnico en Programación M3S2</p>
+  </header>
+
+  <!-- STATUS -->
+  <div class="status-bar">
+    <span class="dot" id="dot"></span>
+    <span id="statusText">Conectando al servidor...</span>
+  </div>
+
+  <!-- FORMULARIO -->
+  <div class="card">
+    <div class="card-title" id="formTitle">➕ Registrar Producto</div>
+    <div class="form-grid">
+      <div>
+        <label for="nombre">Artículo</label>
+        <input type="text" id="nombre" placeholder="Ej: Monitor Gamer" />
+      </div>
+      <div>
+        <label for="precio">Precio ($)</label>
+        <input type="number" id="precio" placeholder="350" min="0" step="0.01" />
+      </div>
+      <div>
+        <label for="existencia">Cantidad</label>
+        <input type="number" id="existencia" placeholder="7" min="0" />
+      </div>
+    </div>
+    <input type="hidden" id="editId" />
+    <button class="btn btn-primary" id="btnSubmit" onclick="enviarProducto()">
+      Enviar a la Nube ☁️
+    </button>
+    <p class="mode-hint" id="modeHint"></p>
+  </div>
+
+  <!-- TABLA -->
+  <div class="card">
+    <div class="card-title">📦 Existencias en Base de Datos</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Artículo</th>
+            <th>Precio</th>
+            <th>Stock</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tabla">
+          <tr><td colspan="4" class="empty">
+            <span class="spinner"></span> Cargando datos...
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+  // ══════════════════════════════════════════════════════
+  //  ⚠️  CAMBIA ESTA URL POR LA QUE TE DIO RENDER
+  // ══════════════════════════════════════════════════════
+  const API_URL = "http://localhost:3000/productos";
+  // Ejemplo producción: "https://inventario-backend-xyz.onrender.com/productos"
+
+  // ─── TOAST ─────────────────────────────────────────
+  function showToast(msg, tipo = 'ok') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `show ${tipo}`;
+    setTimeout(() => t.className = '', 3000);
+  }
+
+  // ─── STATUS ────────────────────────────────────────
+  function setStatus(state, text) {
+    const dot = document.getElementById('dot');
+    dot.className = `dot ${state}`;
+    document.getElementById('statusText').textContent = text;
+  }
+
+  // ─── LEER (READ) ───────────────────────────────────
+  async function obtenerProductos() {
+    try {
+      const res   = await fetch(API_URL);
+      const datos = await res.json();
+      setStatus('connected', `Conectado · ${datos.length} producto(s) en Atlas`);
+      renderTabla(datos);
+    } catch {
+      setStatus('error', 'Sin conexión al backend');
+      document.getElementById('tabla').innerHTML =
+        `<tr><td colspan="4" class="empty">⚠️ No se pudo conectar al servidor.<br>Verifica que el backend esté corriendo.</td></tr>`;
+    }
+  }
+
+  function renderTabla(datos) {
+    const tbody = document.getElementById('tabla');
+    if (!datos.length) {
+      tbody.innerHTML = `<tr><td colspan="4" class="empty">Sin registros. ¡Agrega el primero!</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = datos.map(p => `
+      <tr>
+        <td><strong>${p.nombre}</strong></td>
+        <td>$${Number(p.precio).toFixed(2)}</td>
+        <td>
+          <span class="tag-stock ${p.existencia > 5 ? 'ok' : 'low'}">
+            ${p.existencia} pzas
+          </span>
+        </td>
+        <td>
+          <div class="actions">
+            <button class="btn-icon edit" title="Editar" onclick="prepararEdicion('${p._id}','${p.nombre}',${p.precio},${p.existencia})">✏️</button>
+            <button class="btn-icon del"  title="Eliminar" onclick="eliminarProducto('${p._id}')">🗑️</button>
+          </div>
+        </td>
+      </tr>`).join('');
+  }
+
+  // ─── CREAR / ACTUALIZAR (CREATE / UPDATE) ──────────
+  async function enviarProducto() {
+    const nombre     = document.getElementById('nombre').value.trim();
+    const precio     = parseFloat(document.getElementById('precio').value);
+    const existencia = parseInt(document.getElementById('existencia').value);
+    const editId     = document.getElementById('editId').value;
+
+    if (!nombre || isNaN(precio) || isNaN(existencia)) {
+      showToast('⚠️ Completa todos los campos', 'err');
+      return;
+    }
+
+    const btn = document.getElementById('btnSubmit');
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+
+    const body   = { nombre, precio, existencia };
+    const method = editId ? 'PUT' : 'POST';
+    const url    = editId ? `${API_URL}/${editId}` : API_URL;
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        showToast(editId ? '✅ Producto actualizado' : '✅ Guardado en MongoDB Atlas');
+        limpiarFormulario();
+        obtenerProductos();
+      } else {
+        showToast('❌ Error al guardar', 'err');
+      }
+    } catch {
+      showToast('❌ Sin conexión al servidor', 'err');
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Enviar a la Nube ☁️';
+  }
+
+  // ─── PREPARAR EDICIÓN (UPDATE) ─────────────────────
+  function prepararEdicion(id, nombre, precio, existencia) {
+    document.getElementById('nombre').value     = nombre;
+    document.getElementById('precio').value     = precio;
+    document.getElementById('existencia').value = existencia;
+    document.getElementById('editId').value     = id;
+
+    document.getElementById('formTitle').textContent   = '✏️ Editar Producto';
+    document.getElementById('btnSubmit').textContent   = 'Actualizar en Atlas 🔄';
+    document.getElementById('modeHint').innerHTML =
+      `Editando: <strong>${nombre}</strong> — <a onclick="limpiarFormulario()">Cancelar</a>`;
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ─── ELIMINAR (DELETE) ─────────────────────────────
+  async function eliminarProducto(id) {
+    if (!confirm('¿Eliminar este producto de la base de datos?')) return;
+    try {
+      const res = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('🗑️ Producto eliminado');
+        obtenerProductos();
+      } else {
+        showToast('❌ No se pudo eliminar', 'err');
+      }
+    } catch {
+      showToast('❌ Sin conexión', 'err');
+    }
+  }
+
+  // ─── LIMPIAR FORMULARIO ────────────────────────────
+  function limpiarFormulario() {
+    document.getElementById('nombre').value     = '';
+    document.getElementById('precio').value     = '';
+    document.getElementById('existencia').value = '';
+    document.getElementById('editId').value     = '';
+    document.getElementById('formTitle').textContent  = '➕ Registrar Producto';
+    document.getElementById('btnSubmit').textContent  = 'Enviar a la Nube ☁️';
+    document.getElementById('modeHint').innerHTML     = '';
+  }
+
+  // ─── INICIO ────────────────────────────────────────
+  obtenerProductos();
+</script>
+</body>
+</html>
